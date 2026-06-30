@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>P4 グランドクロス練習｜ギミック理解 / 位置確認 v1.19</title>
+<title>P4 グランドクロス練習｜ギミック理解 / 位置確認</title>
 <style>
   :root{
     --bg:#0b1020;
@@ -371,8 +371,12 @@
   }
   .arena.practice-preview-hidden::before,
   .arena.practice-preview-hidden::after{opacity:0}
-  .arena.practice-preview-hidden > :not(.practice-map-overlay){
+  .arena.practice-preview-hidden > :not(.practice-map-overlay):not(.map-hud){
     visibility:hidden!important;
+  }
+  .arena.practice-preview-hidden .map-hud{
+    visibility:visible!important;
+    z-index:95;
   }
   .beam-lane{
     position:absolute;left:50%;top:50%;width:70px;height:100%;border-radius:999px;
@@ -658,7 +662,7 @@
   <header>
     <div class="title">
       <h1>P4 グランドクロス練習</h1>
-      <p>v1.19：2回目GCの早ほのお/つなみ秒数を調整した版。</p>
+      <p>ギミック理解・位置確認・実践練習で、P4グランドクロスの判断を練習できます。</p>
     </div>
     <div class="links">
       <a class="pilllink" href="https://github.com/pilsnerdrinker/practice-GC#readme" target="_blank" rel="noopener">README</a>
@@ -706,7 +710,7 @@
           <h2>パーティーリスト</h2>
           <div class="party-display-toggles">
             <label class="party-truth-toggle"><input type="checkbox" id="partyTruthToggle" checked> 真偽を表示</label>
-            <label class="party-truth-toggle"><input type="checkbox" id="debuffDetailToggle" checked> 詳細表示</label>
+            <label class="party-truth-toggle"><input type="checkbox" id="debuffDetailToggle"> 詳細表示</label>
           </div>
         </div>
         <p id="partyDesc">パーティーリストをクリックして自分ロールだけを変更。デバフの付け直しは「別の問題」で行う。</p>
@@ -736,6 +740,7 @@
             <button class="action secondary" id="mapSlideNextBtn" type="button">次へ</button>
           </div>
           <div class="map-actions-row map-problem-actions">
+            <button class="action secondary" id="mapRetryBtn" type="button">もう一度</button>
             <button class="action secondary" id="mapPrevBtn" type="button">前の問題</button>
             <button class="action" id="mapNextBtn" type="button">別の問題</button>
             <label class="mode-toggle practice-only-control"><input type="checkbox" id="mapOneByOneToggle" checked> 一問ごと</label>
@@ -771,7 +776,7 @@
     autoTimer: null,
     oneByOne: true,
     showPartyTruth: true,
-    showDebuffDetails: true,
+    showDebuffDetails: false,
     debuffFlowSlideIndex: 0,
     magicSlideIndex: 0,
     throughSlideIndex: 0,
@@ -805,6 +810,7 @@
       practice_magic:{ok:0,total:0}
     }
   };
+  let preservedScrollTarget = null;
 
   function activeStatKey(){
     return `${state.mode}_${state.tab}`;
@@ -1192,9 +1198,9 @@
       prompt:`あなたは ${role} です。\n${role} についた「${debuffLabelWithTiming(d)}」は、真偽込みでどう処理しますか？`,
       promptHtml:`あなたは ${role} です。<br>${role} についた ${debuffHtml} は、${truthHtml}込みでどう処理しますか？`,
       note:'加速度爆弾は早/遅の中にも真偽がある個人ギミック。',
-      options:[{key:'stop',label:'動かない'},{key:'move',label:'動く'}],
+      options:[{key:'move',label:'動く'},{key:'stop',label:'止まる'}],
       correct,
-      explanation:`加速度爆弾は本来「動かない」で処理します。${exTruth ? '今回は真なのでそのままです。' : '今回は偽なので反転して「動く」が正解です。'}`
+      explanation:`加速度爆弾は本来「止まる」で処理します。${exTruth ? '今回は真なので「止まる」が正解です。' : '今回は偽なので反転して「動く」が正解です。'}`
     };
   }
 
@@ -1206,10 +1212,10 @@
       type:'叫声判定',
       prompt:`あなたは ${role} です。\n${role} についた「${debuffLabelWithTiming(d)}」は、真偽込みでどう処理しますか？`,
       promptHtml:`あなたは ${role} です。<br>${role} についた ${debuffHtml} は、${truthHtml}込みでどう処理しますか？`,
-      note:'実際の向きは、真なら外を見る、偽なら内を見る。',
-      options:[{key:'notlook',label:'見ない（外を見る）'},{key:'look',label:'見る（内を見る）'}],
+      note:'実際の向きは、真なら見ない（外）、偽なら見る（内）。',
+      options:[{key:'look',label:'見る（内）'},{key:'notlook',label:'見ない（外）'}],
       correct,
-      explanation:`呪詛の叫声は本来「見ない」処理です。${exTruth ? '今回は真なので、外を向いて視線を見ません。' : '今回は偽なので、内を向いて視線を見ます。'}`
+      explanation:`呪詛の叫声は本来「見ない（外）」処理です。${exTruth ? '今回は真なので「見ない（外）」が正解です。' : '今回は偽なので反転して「見る（内）」が正解です。'}`
     };
   }
 
@@ -1421,12 +1427,16 @@ ${label}に付いた真偽は「${truthLabel(truth)}」です。
     const beamYBottom = 76;
     const leftX = 28;
     const rightX = 72;
+    const practiceLabel = isPracticeMode();
+    const beamLabel = (color, suffix) => practiceLabel
+      ? `${colorLabel(color)}ビーム`
+      : `${colorLabel(color)}ビーム（${suffix}）`;
 
     const basePositions = [
-      {key:`${leftColor}_th`, label:`${colorLabel(leftColor)}ビーム（TH）`, x:leftX, y:beamYTop, cls:`${leftColor}-pos`},
-      {key:`${leftColor}_dps`, label:`${colorLabel(leftColor)}ビーム（DPS）`, x:leftX, y:beamYBottom, cls:`${leftColor}-pos`},
-      {key:`${rightColor}_th`, label:`${colorLabel(rightColor)}ビーム（TH）`, x:rightX, y:beamYTop, cls:`${rightColor}-pos`},
-      {key:`${rightColor}_dps`, label:`${colorLabel(rightColor)}ビーム（DPS）`, x:rightX, y:beamYBottom, cls:`${rightColor}-pos`}
+      {key:`${leftColor}_th`, label:beamLabel(leftColor, 'TH'), x:leftX, y:beamYTop, cls:`${leftColor}-pos`},
+      {key:`${leftColor}_dps`, label:beamLabel(leftColor, 'DPS'), x:leftX, y:beamYBottom, cls:`${leftColor}-pos`},
+      {key:`${rightColor}_th`, label:beamLabel(rightColor, 'TH'), x:rightX, y:beamYTop, cls:`${rightColor}-pos`},
+      {key:`${rightColor}_dps`, label:beamLabel(rightColor, 'DPS'), x:rightX, y:beamYBottom, cls:`${rightColor}-pos`}
     ];
     const positions = basePositions.map(p => ({...p, ...rotateMapPoint(p.x, p.y, rotationStep)}));
 
@@ -1536,6 +1546,8 @@ ${label}に付いた真偽は「${truthLabel(truth)}」です。
   const P4_KEFKA_TARGET_RADIUS = 16.6667;
   const P4_LATE_GAZE_CENTER_RADIUS = 14;
   const DEBUFF_FLOW_TOTAL = 8;
+  const DEBUFF_FLOW_READ_TOTAL = 2;
+  const DEBUFF_FLOW_POSITION_TOTAL = DEBUFF_FLOW_READ_TOTAL + DEBUFF_FLOW_TOTAL;
   const THROUGH_TOTAL = 13;
 
   function makeP4AoeConfig(phase){
@@ -1689,7 +1701,7 @@ ${label}に付いた真偽は「${truthLabel(truth)}」です。
         required:false,
         timing,
         label:`${timingLabel(timing)}加速度なし`,
-        explanation:`${role} には${timingLabel(timing)}加速度爆弾が付いていないため、止まる/動くの追加判定は不要です。`
+        explanation:`${role} には${timingLabel(timing)}加速度爆弾が付いていないため、動く/止まるの追加判定は不要です。`
       };
     }
     const correct = sc.exTruth ? 'stop' : 'move';
@@ -1698,12 +1710,12 @@ ${label}に付いた真偽は「${truthLabel(truth)}」です。
       timing,
       correct,
       label:debuffLabelWithTiming(accel),
-      explanation:`${role} には${debuffLabelWithTiming(accel)}が付いています。エクスデス真偽が${truthLabel(sc.exTruth)}なので、${correct === 'stop' ? '動かない' : '動く'}のが正解です。`
+      explanation:`${role} には${debuffLabelWithTiming(accel)}が付いています。エクスデス真偽が${truthLabel(sc.exTruth)}なので、${correct === 'stop' ? '止まる' : '動く'}のが正解です。`
     };
   }
 
   function accelActionLabel(key){
-    return key === 'stop' ? '動かない' : '動く';
+    return key === 'stop' ? '止まる' : '動く';
   }
 
   function makeRotatedPositions(positions, step){
@@ -1716,29 +1728,39 @@ ${label}に付いた真偽は「${truthLabel(truth)}」です。
 
   function makeDebuffFlowSet1Question(sc, role, slideIndex){
     const earlyWL = findTimedDebuff(sc.party, role, 'early', ['water','lightning']);
+    const accelCheck = makeAccelCheck(sc, role, 'early');
     const action = earlyWL ? calcWLAction(earlyWL.type, sc.exTruth) : 'stack';
     const correct = action === 'stack' ? (thRoles.includes(role) ? 'th_stack' : 'dps_stack') : (thRoles.includes(role) ? 'th_spread' : 'dps_spread');
     const exStep = sc.exStep ?? 0;
+    const practiceLabel = isPracticeMode();
+    const areaLabel = (group, actionLabel) => practiceLabel ? actionLabel : `${group}${actionLabel}`;
+    const areaHtml = (groupClass, group, actionLabel) => practiceLabel ? actionLabel : `<span class="${groupClass}">${group}</span><br>${actionLabel}`;
     const positions = makeRotatedPositions([
-      {key:'th_stack', label:'TH集合', html:'<span class="role-th">TH</span><br>集合', x:50, y:34},
-      {key:'dps_stack', label:'DPS集合', html:'<span class="role-dps">DPS</span><br>集合', x:50, y:66},
-      {key:'th_spread', label:'TH散開', html:'<span class="role-th">TH</span><br>散開', x:82, y:28},
-      {key:'dps_spread', label:'DPS散開', html:'<span class="role-dps">DPS</span><br>散開', x:82, y:72}
+      {key:'th_stack', label:areaLabel('TH', '集合'), html:areaHtml('role-th', 'TH', '集合'), x:50, y:34},
+      {key:'dps_stack', label:areaLabel('DPS', '集合'), html:areaHtml('role-dps', 'DPS', '集合'), x:50, y:66},
+      {key:'th_spread', label:areaLabel('TH', '散開'), html:areaHtml('role-th', 'TH', '散開'), x:82, y:28},
+      {key:'dps_spread', label:areaLabel('DPS', '散開'), html:areaHtml('role-dps', 'DPS', '散開'), x:82, y:72}
     ], exStep);
     const boss = rotateMapPoint(50, 1.5, exStep);
-    return makeMapQuestion(
-      `デバフ処理 ${slideIndex + 1}/${DEBUFF_FLOW_TOTAL}：早デバフ処理`,
-      `あなたは ${role} です。
-外周8方向のどこかにいるエクスデスを北として見て、早水雷を処理します。最初に向かう位置を選んでください。`,
-      'エクスデス基準。エクスデス側にTH集合、反対側にDPS集合。エクスデスの右上寄りにTH散開、右下寄りにDPS散開。',
-      positions,
+    return {
+      type:`デバフ処理 ${slideIndex + 1}/${DEBUFF_FLOW_TOTAL}：早デバフ処理`,
+      prompt:`あなたは ${role} です。
+外周8方向のどこかにいるエクスデスを北として見て、早水雷を処理します。最初に向かう位置を選んでください。${accelCheck.required ? '\nその後、早加速度の動く/止まるも選んでください。' : ''}`,
+      promptHtml:`あなたは ${role} です。<br>外周8方向のどこかにいるエクスデスを北として見て、早水雷を処理します。<br>最初に向かう位置を選んでください。${accelCheck.required ? '<br>その後、早加速度の動く/止まるも選んでください。' : '<br>早加速度が付いていない場合、動く/止まるの追加判定は不要です。'}`,
+      note:`エクスデス基準。エクスデス側にTH集合、反対側にDPS集合。エクスデスの右上寄りにTH散開、右下寄りにDPS散開。Aは常に北固定です。エクスデス位置は${exdeathDirectionLabel(exStep)}方向。`,
+      debuffSet1Board:{
+        positions,
+        correctKey: correct,
+        bossMarkers:[{x:boss.x, y:boss.y, label:'エクス<br>デス'}]
+      },
+      accelCheck,
       correct,
-      earlyWL
+      explanation:(earlyWL
         ? `${role} の早水雷は「${debuffLabelWithTiming(earlyWL)}」です。エクスデス真偽込みで${action === 'stack' ? '集合' : '散開'}処理なので、${positions.find(p => p.key === correct)?.label || correct}が正解です。`
-        : `${role} には早水雷がないため、基本位置確認として${positions.find(p => p.key === correct)?.label || correct}を選びます。`,
-      `Aは常に北固定です。エクスデス位置は${exdeathDirectionLabel(exStep)}方向。`,
-      {bossMarkers:[{x:boss.x, y:boss.y, label:'エクス<br>デス'}]}
-    );
+        : `${role} には早水雷がないため、基本位置確認として${positions.find(p => p.key === correct)?.label || correct}を選びます。`) + `
+${accelCheck.explanation}`,
+      noScore:false
+    };
   }
 
   function makeDebuffFlowGazeQuestion(sc, role, timing, slideIndex, title, placeText){
@@ -1748,12 +1770,11 @@ ${label}に付いた真偽は「${truthLabel(truth)}」です。
       ? `gaze_${directionKey}`
       : `nogaze_${directionKey}`;
     const explanation = gaze
-      ? `${role} には${debuffLabelWithTiming(gaze)}が付いています。視線持ちなので指定位置へ入り、エクスデスが${truthLabel(sc.exTruth)}のため${sc.exTruth ? '外を見る' : '内を見る'}のが正解です。`
-      : `${role} はこの視線の担当ではありません。エクスデスが${truthLabel(sc.exTruth)}のため、視線事故を避ける向きは${sc.exTruth ? '外を見る' : '内を見る'}です。`;
+      ? `${role} には${debuffLabelWithTiming(gaze)}が付いています。視線持ちなので指定位置へ入り、エクスデスが${truthLabel(sc.exTruth)}のため${sc.exTruth ? '見ない（外）' : '見る（内）'}のが正解です。`
+      : `${role} はこの視線の担当ではありません。エクスデスが${truthLabel(sc.exTruth)}のため、視線事故を避ける向きは${sc.exTruth ? '見ない（外）' : '見る（内）'}です。`;
 
     if(timing === 'early'){
       const directionCorrect = sc.exTruth ? 'out' : 'in';
-      const accelCheck = makeAccelCheck(sc, role, 'early');
       const gazeBoard = getDebuffFlowConfig(sc, `gaze:${timing}:${slideIndex}`, () => ({
         phase:'debuffGazeThunder',
         light: pick(P4_LIGHT_PATTERNS),
@@ -1763,17 +1784,16 @@ ${label}に付いた真偽は「${truthLabel(truth)}」です。
         type:`デバフ処理 ${slideIndex + 1}/${DEBUFF_FLOW_TOTAL}：${title}`,
         prompt:`あなたは ${role} です。
 ${placeText}
-雷予兆の安置をクリックし、表示されたマーカーで早視線の向きを選んでください。${accelCheck.required ? '\nその後、早加速度の止まる/動くも選んでください。' : ''}`,
-        promptHtml:`あなたは ${role} です。<br>${placeText}<br>雷予兆の安置をクリックし、表示されたマーカーで早視線の向きを選んでください。${accelCheck.required ? '<br>その後、早加速度の止まる/動くも選んでください。' : '<br>早加速度が付いていない場合、止まる/動くの追加判定は不要です。'}<br>雷床の真偽はマップ中央付近に表示されます。<br>エクスデス真偽は「${truthLabel(sc.exTruth)}${truthIconHtml(sc.exTruth)}」です。`,
-        note:gaze ? '雷予兆は右肩上がり/右肩下がりからランダム。雷床真偽込みの安置をクリック後、マップ上の「外向き/内向き」で向きを選びます。早加速度が付いている場合は、続けて止まる/動くも判定します。' : '雷予兆は右肩上がり/右肩下がりからランダム。雷床真偽込みの安置をクリック後、マップ上の「外向き/内向き」で視線事故を避ける向きを選びます。早加速度が付いている場合は、続けて止まる/動くも判定します。',
+雷予兆の安置をクリックし、表示されたマーカーで早視線の向きを選んでください。`,
+        promptHtml:`あなたは ${role} です。<br>${placeText}<br>雷予兆の安置をクリックし、表示されたマーカーで早視線の向きを選んでください。<br>雷床の真偽はマップ中央付近に表示されます。<br>エクスデス真偽は「${truthLabel(sc.exTruth)}${truthIconHtml(sc.exTruth)}」です。`,
+        note:gaze ? '雷予兆は右肩上がり/右肩下がりからランダム。雷床真偽込みの安置をクリック後、マップ上の「見る（内）/見ない（外）」で向きを選びます。早加速度は前の早デバフ処理で処理済みです。' : '雷予兆は右肩上がり/右肩下がりからランダム。雷床真偽込みの安置をクリック後、マップ上の「見る（内）/見ない（外）」で視線事故を避ける向きを選びます。早加速度は前の早デバフ処理で処理済みです。',
         aoeGazeBoard:gazeBoard,
         correctDirection:directionCorrect,
-        accelCheck,
         options:[],
         explanation:(gaze
-          ? `${role} には${debuffLabelWithTiming(gaze)}が付いています。雷予兆の安置に入り、エクスデスが${truthLabel(sc.exTruth)}のため${sc.exTruth ? '外向き' : '内向き'}に向くのが正解です。`
-          : `${role} はこの視線の担当ではありません。雷予兆の安置に入り、エクスデスが${truthLabel(sc.exTruth)}のため、視線事故を避ける向きは${sc.exTruth ? '外向き' : '内向き'}です。`) + `
-${accelCheck.explanation}`
+          ? `${role} には${debuffLabelWithTiming(gaze)}が付いています。雷予兆の安置に入り、エクスデスが${truthLabel(sc.exTruth)}のため${sc.exTruth ? '見ない（外）' : '見る（内）'}に向くのが正解です。`
+          : `${role} はこの視線の担当ではありません。雷予兆の安置に入り、エクスデスが${truthLabel(sc.exTruth)}のため、視線事故を避ける向きは${sc.exTruth ? '見ない（外）' : '見る（内）'}です。`) + `
+早加速度は前の早デバフ処理で処理済みです。`
       };
     }
 
@@ -1792,16 +1812,16 @@ ${gaze ? '遅視線持ちなのでケフカ足元の点線円へ入ります。'
 クリックでタゲサ内外を選び、表示されたマーカーで向きを選んでください。`,
       promptHtml:`あなたは ${role} です。<br>${placeText}<br>${gaze ? '遅視線持ちなのでケフカ足元の点線円へ入ります。' : '遅視線持ちではないのでケフカのタゲサ外へ出ます。'}<br>クリックでタゲサ内外を選び、表示されたマーカーで向きを選んでください。<br>遅加速度は前の遅雷水処理で処理済みです。<br>エクスデス真偽は「${truthLabel(sc.exTruth)}${truthIconHtml(sc.exTruth)}」です。`,
       note:gaze
-        ? '遅視線持ちはケフカ足元へ駆け込み、タゲサより一回り小さい点線円の中をクリックします。真なら外向き、偽なら内向き。'
-        : '遅視線を持っていない人は、ケフカのピンクのタゲサ外をクリックします。視線事故を避ける向きは、真なら外向き、偽なら内向き。',
+        ? '遅視線持ちはケフカ足元へ駆け込み、タゲサより一回り小さい点線円の中をクリックします。真なら見ない（外）、偽なら見る（内）。'
+        : '遅視線を持っていない人は、ケフカのピンクのタゲサ外をクリックします。視線事故を避ける向きは、真なら見ない（外）、偽なら見る（内）。',
       lateGazeBoard:lateBoard,
       hasGaze:!!gaze,
       correctPosition,
       correctDirection:directionCorrect,
       options:[],
       explanation:gaze
-        ? `${role} には${debuffLabelWithTiming(gaze)}が付いています。遅視線持ちなのでケフカ足元の点線円内に入り、エクスデスが${truthLabel(sc.exTruth)}のため${sc.exTruth ? '外向き' : '内向き'}に向くのが正解です。遅加速度は前の遅雷水処理で処理済みです。`
-        : `${role} は遅視線持ちではありません。ケフカのタゲサ外へ出て、エクスデスが${truthLabel(sc.exTruth)}のため${sc.exTruth ? '外向き' : '内向き'}に向くのが正解です。遅加速度は前の遅雷水処理で処理済みです。`,
+        ? `${role} には${debuffLabelWithTiming(gaze)}が付いています。遅視線持ちなのでケフカ足元の点線円内に入り、エクスデスが${truthLabel(sc.exTruth)}のため${sc.exTruth ? '見ない（外）' : '見る（内）'}に向くのが正解です。遅加速度は前の遅雷水処理で処理済みです。`
+        : `${role} は遅視線持ちではありません。ケフカのタゲサ外へ出て、エクスデスが${truthLabel(sc.exTruth)}のため${sc.exTruth ? '見ない（外）' : '見る（内）'}に向くのが正解です。遅加速度は前の遅雷水処理で処理済みです。`,
       noScore:false
     };
   }
@@ -1863,9 +1883,9 @@ ${isLate ? '遅視線が終わったら、全員中央へ集合します。' : '
     return {
       type:`デバフ処理 ${slideIndex + 1}/${DEBUFF_FLOW_TOTAL}：遅雷水処理`,
       prompt:`あなたは ${role} です。
-Aを北固定で、遅水雷を処理します。氷床の真偽込み安置に入りつつ、ロール別の頭割り/散開位置をクリックしてください。${accelCheck.required ? '\nその後、遅加速度の止まる/動くも選んでください。' : ''}`,
-      promptHtml:`あなたは ${role} です。<br>Aを北固定で、遅水雷を処理します。<br>氷床の真偽込み安置に入りつつ、ロール別の頭割り/散開位置をクリックしてください。${accelCheck.required ? '<br>その後、遅加速度の止まる/動くも選んでください。' : '<br>遅加速度が付いていない場合、止まる/動くの追加判定は不要です。'}<br>氷床の真偽はマップ中央付近に表示されます。`,
-      note:'大きい点線の丸が、TH/DPS別の頭割り・AoE捨てエリアです。クリック位置が「正しい点線エリア内」かつ「氷床の真偽込み安置内」なら位置は正解です。遅加速度が付いている場合は、続けて止まる/動くも判定します。',
+Aを北固定で、遅水雷を処理します。氷床の真偽込み安置に入りつつ、ロール別の頭割り/散開位置をクリックしてください。${accelCheck.required ? '\nその後、遅加速度の動く/止まるも選んでください。' : ''}`,
+      promptHtml:`あなたは ${role} です。<br>Aを北固定で、遅水雷を処理します。<br>氷床の真偽込み安置に入りつつ、ロール別の頭割り/散開位置をクリックしてください。${accelCheck.required ? '<br>その後、遅加速度の動く/止まるも選んでください。' : '<br>遅加速度が付いていない場合、動く/止まるの追加判定は不要です。'}<br>氷床の真偽はマップ中央付近に表示されます。`,
+      note:'大きい点線の丸が、TH/DPS別の頭割り・AoE捨てエリアです。クリック位置が「正しい点線エリア内」かつ「氷床の真偽込み安置内」なら位置は正解です。遅加速度が付いている場合は、続けて動く/止まるも判定します。',
       debuffSet2Board:{iceBoard, targetAreas, correctKey:correct},
       accelCheck,
       options:[],
@@ -1906,15 +1926,84 @@ ${accelCheck.explanation}`,
     return sc.debuffFlowQuestions[key];
   }
 
+  function makeDebuffFlowReadQuestion(sc, role, slideIndex, readKind){
+    if(!sc.readBoards) sc.readBoards = {};
+    const board = makeThroughReadBoard(sc.readBoards[readKind] || makeP4AoeConfig('readBoth'));
+    sc.readBoards[readKind] = board;
+    const labelMap = {
+      gc1:'1回目GC読取',
+      gc2:'2回目GC読取'
+    };
+    const detailMap = {
+      gc1:'エクスデスは1回目GCデバフ、カオスはほのお/つなみ、ケフカは真偽つき雷床/氷床を提示します。',
+      gc2:'エクスデスは2回目GCデバフを追加し、カオスは2回目のほのお/つなみ、ケフカは真偽つき雷床/氷床を提示します。'
+    };
+    return {
+      type:`デバフ処理 ${slideIndex + 1}/${DEBUFF_FLOW_POSITION_TOTAL}：${labelMap[readKind] || 'GC読取'}`,
+      prompt:`あなたは ${role} です。\n${detailMap[readKind]}\n雷床と氷床の真偽込みで、床の安置をクリックしてください。`,
+      promptHtml:`あなたは ${role} です。<br>${detailMap[readKind]}<br>雷床と氷床の真偽込みで、床の安置をクリックしてください。`,
+      note:'デバフ付与を読むスライドです。チャージの暗記ではなく、表示された雷床・氷床の真偽を見て、その時点の本当の安置をクリックします。',
+      aoeBoard:board,
+      noScore:false
+    };
+  }
+
+  function cloneDebuffFlowActionQuestionWithPositionTitle(q, slideIndex){
+    const localIndex = slideIndex - DEBUFF_FLOW_READ_TOTAL;
+    const originalType = q.type || '確認';
+    const label = originalType.replace(/^デバフ処理 \d+\/\d+：/, '');
+    return {
+      ...q,
+      type:`デバフ処理 ${slideIndex + 1}/${DEBUFF_FLOW_POSITION_TOTAL}：${label || practiceSlideLabel(slideIndex, 'debuffFlow') || `処理${localIndex + 1}`}`
+    };
+  }
+
+  function getDebuffFlowPositionSlideQuestion(sc, role, slideIndex){
+    const idx = ((slideIndex % DEBUFF_FLOW_POSITION_TOTAL) + DEBUFF_FLOW_POSITION_TOTAL) % DEBUFF_FLOW_POSITION_TOTAL;
+    sc.debuffFlowSlide = idx;
+    const fullParty = sc.fullParty || sc.party;
+    if(idx === 0){
+      sc.party = clonePartyWithSourceRound(fullParty, 1, 1);
+      sc.round = 1;
+      sc.exTruth = sc.baseExTruth ?? sc.exTruth;
+      sc.chaosTruth = sc.baseChaosTruth ?? sc.chaosTruth;
+      sc.chaosElement = sc.firstChaosElement;
+      sc.waterLightningTiming = sc.firstWaterLightningTiming;
+      return makeDebuffFlowReadQuestion(sc, role, idx, 'gc1');
+    }
+    if(idx === 1){
+      sc.party = fullParty;
+      sc.round = 2;
+      sc.exTruth = sc.baseExTruth ?? sc.exTruth;
+      sc.chaosTruth = sc.baseChaosTruth ?? sc.chaosTruth;
+      sc.chaosElement = sc.secondChaosElement || sc.chaosElement;
+      return makeDebuffFlowReadQuestion(sc, role, idx, 'gc2');
+    }
+    sc.party = fullParty;
+    sc.round = 2;
+    sc.exTruth = sc.baseExTruth ?? sc.exTruth;
+    sc.chaosTruth = sc.baseChaosTruth ?? sc.chaosTruth;
+    const q = getDebuffFlowSlideQuestion(sc, role, idx - DEBUFF_FLOW_READ_TOTAL);
+    return cloneDebuffFlowActionQuestionWithPositionTitle(q, idx);
+  }
+
   function makeDebuffFlowPositionQuestion(role, slideIndex = 0){
     const sc = generateGC12(2);
     sc.positionKind = 'debuffFlow';
     sc.role = role;
-    sc.debuffFlowSlide = ((slideIndex % DEBUFF_FLOW_TOTAL) + DEBUFF_FLOW_TOTAL) % DEBUFF_FLOW_TOTAL;
+    sc.fullParty = mergeParties(sc.party);
+    sc.baseExTruth = sc.exTruth;
+    sc.baseChaosTruth = sc.chaosTruth;
+    sc.secondChaosElement = sc.chaosElement;
+    sc.debuffFlowSlide = ((slideIndex % DEBUFF_FLOW_POSITION_TOTAL) + DEBUFF_FLOW_POSITION_TOTAL) % DEBUFF_FLOW_POSITION_TOTAL;
     sc.exStep = rnd(8);
     sc.debuffFlowQuestions = {};
     sc.debuffFlowConfigs = {};
-    sc.question = getDebuffFlowSlideQuestion(sc, role, sc.debuffFlowSlide);
+    sc.readBoards = {
+      gc1: makeThroughReadBoard(makeP4AoeConfig('readBoth')),
+      gc2: makeThroughReadBoard(makeP4AoeConfig('readBoth'))
+    };
+    sc.question = getDebuffFlowPositionSlideQuestion(sc, role, sc.debuffFlowSlide);
     return sc;
   }
 
@@ -2276,7 +2365,7 @@ ${beamText}
     const idx = Math.max(0, index || 0);
     const tables = {
       flood: [5],
-      debuffFlow: [8, 6, 4, 2, 3, 5, 3, 3],
+      debuffFlow: [4, 4, 8, 6, 4, 2, 3, 5, 3, 3],
       magicCharge: [5, 3, 3],
       through: [4, 4, 4, 11, 8, 6, 4, 2, 3, 5, 3, 3, 3]
     };
@@ -2285,7 +2374,7 @@ ${beamText}
   }
 
   function practiceCountdownSeconds(kind = practiceCurrentKind()){
-    return kind === 'debuffFlow' ? 5 : 3;
+    return 3;
   }
 
   function practiceElapsedMs(){
@@ -2298,7 +2387,7 @@ ${beamText}
     return isPracticeMode()
       && state.practice.phase === 'answer'
       && practiceCurrentKind() === 'debuffFlow'
-      && practiceCurrentSlideIndex() === 1
+      && practiceCurrentSlideIndex() === DEBUFF_FLOW_READ_TOTAL + 1
       && practiceElapsedMs() < 1000;
   }
 
@@ -2319,7 +2408,7 @@ ${beamText}
   function practiceSlideLabel(index, kind = practiceKindFromTab()){
     const tables = {
       flood: ['無の氾濫'],
-      debuffFlow: ['早デバフ処理', '早視線処理', '中央集合', '早ほのお処理', '遅雷水処理', '遅視線処理', '中央集合', '遅つなみ処理'],
+      debuffFlow: ['1回目GC読取', '2回目GC読取', '早デバフ処理', '早視線処理', '中央集合', '早ほのお処理', '遅雷水処理', '遅視線処理', '中央集合', '遅つなみ処理'],
       magicCharge: ['雷床チャージ', '氷床チャージ', 'マジックアウト'],
       through: [
         '1回目GC読取', '2回目GC読取', '3回目GC読取', '無の氾濫',
@@ -2353,7 +2442,7 @@ ${beamText}
     const startBtn = $('#practiceRestartBtn');
     if(!controls || !bar || !status || !pauseBtn) return;
     const showPractice = isPracticeMode();
-    controls.classList.toggle('show', showPractice);
+    controls.classList.remove('show');
     mapTimer?.classList.toggle('show', showPractice);
     if(!showPractice) return;
     const kind = practiceCurrentKind();
@@ -2447,9 +2536,9 @@ ${beamText}
     render();
     updatePracticeTimerUi();
     state.practice.tickTimer = setInterval(tickPracticeTimer, 100);
-    if(kind === 'debuffFlow' && idx === 1){
+    if(kind === 'debuffFlow' && idx === DEBUFF_FLOW_READ_TOTAL + 1){
       state.practice.revealDelayTimer = setTimeout(() => {
-        if(isPracticeMode() && state.practice.phase === 'answer' && practiceCurrentKind() === 'debuffFlow' && practiceCurrentSlideIndex() === 1){
+        if(isPracticeMode() && state.practice.phase === 'answer' && practiceCurrentKind() === 'debuffFlow' && practiceCurrentSlideIndex() === DEBUFF_FLOW_READ_TOTAL + 1){
           state.practice.gazeRevealRendered = true;
           render();
         }
@@ -2463,7 +2552,7 @@ ${beamText}
     if(state.practice.paused) return updatePracticeTimerUi();
     const beforeFloodLevel = practiceThroughFloodRevealLevel();
     state.practice.remainingMs = Math.max(0, state.practice.deadline - Date.now());
-    if(practiceCurrentKind() === 'debuffFlow' && practiceCurrentSlideIndex() === 1 && !state.practice.gazeRevealRendered && practiceElapsedMs() >= 1000){
+    if(practiceCurrentKind() === 'debuffFlow' && practiceCurrentSlideIndex() === DEBUFF_FLOW_READ_TOTAL + 1 && !state.practice.gazeRevealRendered && practiceElapsedMs() >= 1000){
       state.practice.gazeRevealRendered = true;
       render();
     }
@@ -2539,7 +2628,64 @@ ${beamText}
       const cls = ok ? 'ok' : 'ng';
       items.push(`<div class="practice-log-item ${cls}">${i + 1}. ${mark} ${label}</div>`);
     }
-    return `<div class="practice-log-box"><div class="practice-log-title">結果 ${okCount} / ${total}</div><div class="practice-log-grid">${items.join('')}</div><div class="practice-log-actions"><button type="button" class="action" id="practiceSummaryNextBtn">別の問題</button></div></div>`;
+    return `<div class="practice-log-box"><div class="practice-log-title">結果 ${okCount} / ${total}</div><div class="practice-log-grid">${items.join('')}</div><div class="practice-log-actions"><button type="button" class="action" id="practiceSummaryNextBtn">別の問題</button><button type="button" class="action secondary" id="practiceSummaryRetryBtn">もう一度</button></div></div>`;
+  }
+
+  function resetQuestionAnswerState(){
+    clearAutoTimer();
+    if(isPracticeMode()) clearPracticeTimers();
+    state.selected = null;
+    state.answered = false;
+    state.revealed = false;
+    const q = state.scenario?.question;
+    if(q?.parts){
+      q.parts.forEach(part => {
+        part.answered = false;
+        part.selected = null;
+        part.revealed = false;
+        part.scored = false;
+      });
+    }
+    const rec = currentRecord();
+    if(rec){
+      rec.selected = null;
+      rec.answered = false;
+      rec.revealed = false;
+      rec.scored = false;
+      rec.practiceLogged = false;
+      rec.scenario = state.scenario;
+    }
+    saveRecord();
+  }
+
+  function retryPracticeSet(autoStart = true){
+    if(!isPracticeMode()) return;
+    clearAutoTimer();
+    clearPracticeTimers();
+    state.practice.log = [];
+    const kind = practiceCurrentKind();
+    if(kind !== 'flood'){
+      loadPracticeSlide(0, false);
+    } else {
+      resetQuestionAnswerState();
+      resetPracticeRuntime();
+    }
+    if(autoStart) startPracticeCurrent();
+  }
+
+  function retryCurrentQuestion(){
+    if(isPracticeMode() && state.practice.phase === 'summary'){
+      retryPracticeSet(true);
+      return;
+    }
+    const idx = practiceCurrentSlideIndex();
+    resetQuestionAnswerState();
+    if(isPracticeMode()){
+      state.practice.log = (state.practice.log || []).filter(entry => entry.index !== idx);
+      startPracticeCurrent();
+    } else {
+      render();
+    }
   }
 
   function showPracticeSummaryThenReset(){
@@ -2601,11 +2747,8 @@ ${beamText}
     state.revealed = false;
     if(practiceCurrentSlideIndex() === 0){
       state.practice.log = [];
-      if(practiceCurrentKind() === 'through') state.practice.throughRevealStage = 'none';
     }
-    if(practiceCurrentKind() === 'through'){
-      state.practice.throughRevealStage = naturalThroughRevealStageForSlide(practiceCurrentSlideIndex());
-    }
+    state.practice.throughRevealStage = naturalPracticeRevealStageForSlide(practiceCurrentKind(), practiceCurrentSlideIndex());
     const rec = currentRecord();
     if(rec){
       rec.answered = false;
@@ -2627,6 +2770,19 @@ ${beamText}
     return 'gc3_all';
   }
 
+  function naturalDebuffFlowRevealStageForSlide(index){
+    const idx = Math.max(0, index || 0);
+    if(idx <= 0) return 'none';
+    if(idx === 1) return 'gc1_all';
+    return 'gc2_all';
+  }
+
+  function naturalPracticeRevealStageForSlide(kind, index){
+    if(kind === 'through') return naturalThroughRevealStageForSlide(index);
+    if(kind === 'debuffFlow') return naturalDebuffFlowRevealStageForSlide(index);
+    return 'all';
+  }
+
   function newPracticeSet(autoStart = false){
     clearAutoTimer();
     clearPracticeTimers();
@@ -2635,7 +2791,7 @@ ${beamText}
     state.throughSlideIndex = 0;
     const kind = practiceKindFromTab();
     state.practice.log = [];
-    state.practice.throughRevealStage = kind === 'through' ? 'none' : 'all';
+    state.practice.throughRevealStage = naturalPracticeRevealStageForSlide(kind, 0);
     const scenario = generatePositionScenario(kind, 0);
     pushRecord(scenario);
     const rec = currentRecord();
@@ -2655,8 +2811,7 @@ ${beamText}
     const kind = practiceCurrentKind();
     const total = practiceSlideTotal(kind);
     const clampedIndex = Math.max(0, Math.min(total - 1, index));
-    if(kind !== 'through') state.practice.throughRevealStage = 'all';
-    else state.practice.throughRevealStage = naturalThroughRevealStageForSlide(clampedIndex);
+    state.practice.throughRevealStage = naturalPracticeRevealStageForSlide(kind, clampedIndex);
     if(kind === 'flood'){
       state.scenario = generatePositionScenario('flood', 0);
     } else if(kind === 'debuffFlow'){
@@ -2664,7 +2819,7 @@ ${beamText}
       if(state.scenario?.positionKind === 'debuffFlow'){
         const role = state.scenario.role || $('#roleSelect').value || 'MT';
         state.scenario.debuffFlowSlide = state.debuffFlowSlideIndex;
-        state.scenario.question = getDebuffFlowSlideQuestion(state.scenario, role, state.debuffFlowSlideIndex);
+        state.scenario.question = getDebuffFlowPositionSlideQuestion(state.scenario, role, state.debuffFlowSlideIndex);
       } else {
         state.scenario = generatePositionScenario(kind, state.debuffFlowSlideIndex);
       }
@@ -2740,6 +2895,7 @@ ${beamText}
   }
 
   function runThroughDebuffRevealSequence(idx){
+    const kind = practiceCurrentKind();
     const nextIndex = idx + 1;
     const stages = {
       0: {first:'gc1_core', second:'gc1_all', firstDelay:2000, secondDelay:5000, afterSecondDelay:1000},
@@ -2751,10 +2907,10 @@ ${beamText}
     state.practice.phase = 'transition';
     updatePracticeTimerUi();
     state.practice.autoAdvanceTimer = setTimeout(() => {
-      if(!isPracticeMode() || practiceCurrentKind() !== 'through' || practiceCurrentSlideIndex() !== idx) return;
+      if(!isPracticeMode() || practiceCurrentKind() !== kind || practiceCurrentSlideIndex() !== idx) return;
       setPracticeThroughRevealStage(cfg.first);
       state.practice.autoAdvanceTimer = setTimeout(() => {
-        if(!isPracticeMode() || practiceCurrentKind() !== 'through' || practiceCurrentSlideIndex() !== idx) return;
+        if(!isPracticeMode() || practiceCurrentKind() !== kind || practiceCurrentSlideIndex() !== idx) return;
         if(cfg.second){
           setPracticeThroughRevealStage(cfg.second);
           state.practice.autoAdvanceTimer = setTimeout(() => loadPracticeSlide(nextIndex, true), cfg.afterSecondDelay);
@@ -2772,6 +2928,7 @@ ${beamText}
     const idx = practiceCurrentSlideIndex();
     const total = practiceSlideTotal(kind);
     if(kind === 'through' && idx <= 2 && runThroughDebuffRevealSequence(idx)) return;
+    if(kind === 'debuffFlow' && idx < DEBUFF_FLOW_READ_TOTAL && runThroughDebuffRevealSequence(idx)) return;
     if(idx < total - 1){
       loadPracticeSlide(idx + 1, true);
     } else {
@@ -2788,7 +2945,7 @@ ${beamText}
     state.practice.slideTimeMs = 0;
     state.practice.remainingMs = 0;
     state.practice.deadline = 0;
-    if(practiceCurrentKind() === 'through') state.practice.throughRevealStage = naturalThroughRevealStageForSlide(practiceCurrentSlideIndex());
+    state.practice.throughRevealStage = naturalPracticeRevealStageForSlide(practiceCurrentKind(), practiceCurrentSlideIndex());
     updatePracticeTimerUi();
   }
 
@@ -2805,7 +2962,7 @@ ${beamText}
     [prev, next].forEach(el => el?.classList.remove('practice-hidden'));
     [show].forEach(el => el?.classList.toggle('practice-hidden', isPractice));
     one?.classList.remove('practice-hidden');
-    practiceControls?.classList.toggle('show', isPractice);
+    practiceControls?.classList.remove('show');
     mapOne?.classList.toggle('practice-hidden', !isPractice);
     mapStart?.classList.toggle('practice-hidden', !isPractice);
     mapPause?.classList.toggle('practice-hidden', !isPractice);
@@ -2816,6 +2973,33 @@ ${beamText}
     if(state.autoTimer){
       clearTimeout(state.autoTimer);
       state.autoTimer = null;
+    }
+  }
+
+  function withPreservedScroll(fn){
+    const x = window.scrollX || window.pageXOffset || 0;
+    const y = window.scrollY || window.pageYOffset || 0;
+    preservedScrollTarget = {x, y, until: performance.now() + 800};
+    document.activeElement?.blur?.();
+    fn();
+    restoreScrollPosition(x, y, true);
+    setTimeout(() => {
+      if(preservedScrollTarget?.x === x && preservedScrollTarget?.y === y){
+        preservedScrollTarget = null;
+      }
+    }, 850);
+  }
+
+  function restoreScrollPosition(x, y, persistent = false){
+    const restore = () => window.scrollTo(x, y);
+    requestAnimationFrame(restore);
+    setTimeout(restore, 0);
+    setTimeout(restore, 50);
+    if(persistent){
+      setTimeout(restore, 120);
+      setTimeout(restore, 250);
+      setTimeout(restore, 500);
+      setTimeout(restore, 800);
     }
   }
 
@@ -2851,7 +3035,7 @@ ${beamText}
   }
 
   function positionSlideTotal(kind){
-    if(kind === 'debuffFlow') return DEBUFF_FLOW_TOTAL;
+    if(kind === 'debuffFlow') return DEBUFF_FLOW_POSITION_TOTAL;
     if(kind === 'magicCharge') return 3;
     if(kind === 'through') return THROUGH_TOTAL;
     return 1;
@@ -2868,6 +3052,7 @@ ${beamText}
   function currentSelectionIsCorrect(){
     const q = state.scenario?.question;
     if(!q) return false;
+    if(q.debuffSet1Board) return p4DebuffSet1SelectionIsCorrect(currentDebuffSet1Selection(), q);
     if(q.aoeGazeBoard) return p4GazeAoeSelectionIsCorrect(currentGazeAoeSelection(), q);
     if(q.debuffSet2Board) return p4DebuffSet2SelectionIsCorrect(currentDebuffSet2Selection(), q);
     if(q.lateGazeBoard) return p4LateGazeSelectionIsCorrect(currentLateGazeSelection(), q);
@@ -2964,7 +3149,7 @@ ${beamText}
         const currentSlide = state.scenario?.positionKind === 'debuffFlow'
           ? (state.scenario.debuffFlowSlide || 0)
           : (state.debuffFlowSlideIndex || 0);
-        state.debuffFlowSlideIndex = ((currentSlide % DEBUFF_FLOW_TOTAL) + DEBUFF_FLOW_TOTAL) % DEBUFF_FLOW_TOTAL;
+        state.debuffFlowSlideIndex = ((currentSlide % DEBUFF_FLOW_POSITION_TOTAL) + DEBUFF_FLOW_POSITION_TOTAL) % DEBUFF_FLOW_POSITION_TOTAL;
         scenario = generatePositionScenario(kind, state.debuffFlowSlideIndex);
       } else if(kind === 'magicCharge'){
         const currentSlide = state.scenario?.positionKind === 'magicCharge'
@@ -3011,7 +3196,7 @@ ${beamText}
       if(sc.positionKind === 'flood'){
         sc.question = makeFloodPositionQuestion(role, sc.party, sc.exTruth, sc.beamTruth, sc.floodConfig);
       } else if(sc.positionKind === 'debuffFlow'){
-        sc.question = getDebuffFlowSlideQuestion(sc, role, sc.debuffFlowSlide || 0);
+        sc.question = getDebuffFlowPositionSlideQuestion(sc, role, sc.debuffFlowSlide || 0);
       } else if(sc.positionKind === 'magicCharge'){
         const magicBoard = sc.magicBoard || sc.question?.aoeBoard || makeP4AoeConfig('thunderCharge');
         const fresh = generatePositionScenario('magicCharge', sc.magicSlide || 0, magicBoard);
@@ -3027,7 +3212,7 @@ ${beamText}
         sc.question = makeFloodPositionQuestion(role, sc.party, sc.exTruth, sc.beamTruth, sc.floodConfig);
       } else if(sc.positionKind === 'debuffFlow'){
         sc.role = role;
-        sc.question = getDebuffFlowSlideQuestion(sc, role, sc.debuffFlowSlide || 0);
+        sc.question = getDebuffFlowPositionSlideQuestion(sc, role, sc.debuffFlowSlide || 0);
       } else if(sc.positionKind === 'magicCharge'){
         const magicBoard = sc.magicBoard || sc.question?.aoeBoard || makeP4AoeConfig('thunderCharge');
         const fresh = generatePositionScenario('magicCharge', sc.magicSlide || 0, magicBoard);
@@ -3130,7 +3315,7 @@ ${beamText}
   }
 
   function gazeDirectionLabel(key){
-    return key === 'out' ? '外向き' : '内向き';
+    return key === 'out' ? '見ない（外）' : '見る（内）';
   }
 
   function p4FacingMarkerAngle(pt, direction){
@@ -3252,6 +3437,15 @@ ${beamText}
     if(state.revealed) return;
     clearAutoTimer();
     const q = state.scenario.question;
+    if(q.debuffSet1Board){
+      state.answered = true;
+      state.selected = null;
+      state.revealed = true;
+      saveRecord();
+      render();
+      return;
+    }
+
     if(q.aoeGazeBoard){
       state.answered = true;
       state.selected = null;
@@ -3307,6 +3501,11 @@ ${beamText}
   }
 
   function render(){
+    const scrollTarget = preservedScrollTarget && performance.now() <= preservedScrollTarget.until
+      ? preservedScrollTarget
+      : null;
+    const x = scrollTarget ? scrollTarget.x : (window.scrollX || window.pageXOffset || 0);
+    const y = scrollTarget ? scrollTarget.y : (window.scrollY || window.pageYOffset || 0);
     renderControlVisibility();
     renderModeText();
     renderPartyDesc();
@@ -3315,6 +3514,7 @@ ${beamText}
     renderMeta();
     renderQuestion();
     renderCheatsheet();
+    restoreScrollPosition(x, y, !!scrollTarget);
   }
 
   function renderPartyDesc(){
@@ -3342,7 +3542,7 @@ ${beamText}
         desc.textContent = '3カウント後、無の氾濫のビーム位置を制限時間つきで判断する。';
       } else if(state.tab === 'gc2'){
         title.textContent = 'デバフ処理：実践練習';
-        desc.textContent = '3カウント後、デバフ処理8枚を制限時間つきで連続進行する。';
+        desc.textContent = '3カウント後、GC読取2枚＋デバフ処理8枚を制限時間つきで連続進行する。';
       } else if(state.tab === 'gc3'){
         title.textContent = 'マジックチャージ：実践練習';
         desc.textContent = '3カウント後、雷床チャージ・氷床チャージ・マジックアウトを制限時間つきで判断する。';
@@ -3370,7 +3570,7 @@ ${beamText}
         desc.textContent = '3回目GC処理。青ビーム / 紫ビームとTH/DPS側をマップで確認する。';
       } else if(state.tab === 'gc2'){
         title.textContent = 'デバフ処理：位置確認';
-        desc.textContent = '早デバフ処理から遅ほのお/つなみまで、8枚スライドで流れを確認する。';
+        desc.textContent = 'GC読取2枚のあと、早デバフ処理から遅ほのお/つなみまで8枚スライドで流れを確認する。';
       } else if(state.tab === 'gc3'){
         title.textContent = 'マジックチャージ：位置確認';
         desc.textContent = '1枚目は雷床、2枚目は氷床のチャージ安置だけをクリック。3枚目はマジックアウトの最終安置をクリックする。';
@@ -3389,7 +3589,7 @@ ${beamText}
 
   function currentDebuffFlowProgressIndex(sc = state.scenario){
     if(!sc || (state.mode !== 'position' && state.mode !== 'practice')) return -1;
-    if(sc.positionKind === 'debuffFlow') return sc.debuffFlowSlide || 0;
+    if(sc.positionKind === 'debuffFlow') return (sc.debuffFlowSlide || 0) - DEBUFF_FLOW_READ_TOTAL;
     if(sc.positionKind === 'through'){
       const src = throughSourceForSlide(sc.throughSlide || 0);
       if(src.kind === 'debuffFlow') return src.localIndex ?? -1;
@@ -3404,7 +3604,7 @@ ${beamText}
     if(sc?.positionKind === 'through' && (sc.throughSlide || 0) >= 4 && ['allagan','trans','dead','living'].includes(d.type)) return true;
     if(idx >= 1 && ['water','lightning'].includes(d.type) && d.timing === 'early') return true;
     if(idx >= 2 && d.type === 'gaze' && d.timing === 'early') return true;
-    if(idx >= 2 && d.type === 'accel' && d.timing === 'early') return true;
+    if(idx >= 1 && d.type === 'accel' && d.timing === 'early') return true;
     if(idx >= 4 && d.type === 'fire') return true;
     if(idx >= 5 && ['water','lightning'].includes(d.type) && d.timing === 'late') return true;
     if(idx >= 5 && d.type === 'accel' && d.timing === 'late') return true;
@@ -3440,6 +3640,10 @@ ${beamText}
     return isPracticeMode() && sc?.positionKind === 'through';
   }
 
+  function isPracticeDebuffFlowScenario(sc = state.scenario){
+    return isPracticeMode() && sc?.positionKind === 'debuffFlow';
+  }
+
   function throughMasterParty(sc){
     if(!sc?.debuff || !sc?.flood) return sc?.party || makeEmptyParty();
     return mergeParties(sc.debuff.party, sc.flood.party);
@@ -3463,9 +3667,28 @@ ${beamText}
     });
   }
 
+  function debuffFlowVisibleDebuffs(sc, role){
+    const sourceParty = sc?.fullParty || sc?.party || makeEmptyParty();
+    const ds = (sourceParty[role] || []).map(d => ({...d}));
+    if(!isPracticeDebuffFlowScenario(sc)) return ds;
+    const stage = state.practice.throughRevealStage || 'none';
+    const isChaos = (d) => ['fire','waterChaos'].includes(d.type);
+    return ds.filter(d => {
+      if(stage === 'none') return false;
+      if(stage === 'gc1_core') return d.sourceRound === 1 && !isChaos(d);
+      if(stage === 'gc1_all') return d.sourceRound === 1;
+      if(stage === 'gc2_core') return d.sourceRound === 1 || (d.sourceRound === 2 && !isChaos(d));
+      if(stage === 'gc2_all') return d.sourceRound === 1 || d.sourceRound === 2;
+      return true;
+    });
+  }
+
   function partyDebuffsForRender(sc, role){
     if(isPracticeThroughScenario(sc)){
       return throughVisibleDebuffs(sc, role).filter(d => !positionDebuffResolved(sc, d));
+    }
+    if(isPracticeDebuffFlowScenario(sc)){
+      return debuffFlowVisibleDebuffs(sc, role).filter(d => !positionDebuffResolved(sc, d));
     }
     return sc.party[role] || [];
   }
@@ -3694,7 +3917,7 @@ ${beamText}
     }
     if(state.mode !== 'position') return null;
     if(state.tab === 'gc1') return {kind:'flood', index:0, total:1};
-    if(state.tab === 'gc2') return {kind:'debuffFlow', index: state.scenario?.debuffFlowSlide || 0, total:DEBUFF_FLOW_TOTAL};
+    if(state.tab === 'gc2') return {kind:'debuffFlow', index: state.scenario?.debuffFlowSlide || 0, total:DEBUFF_FLOW_POSITION_TOTAL};
     if(state.tab === 'gc3') return {kind:'magicCharge', index: state.scenario?.magicSlide || 0, total:3};
     if(state.tab === 'magic') return {kind:'through', index: state.scenario?.throughSlide || 0, total:THROUGH_TOTAL};
     return null;
@@ -3709,7 +3932,7 @@ ${beamText}
       if(state.scenario?.positionKind === 'debuffFlow'){
         const role = state.scenario.role || $('#roleSelect').value || 'MT';
         state.scenario.debuffFlowSlide = state.debuffFlowSlideIndex;
-        state.scenario.question = getDebuffFlowSlideQuestion(state.scenario, role, state.debuffFlowSlideIndex);
+        state.scenario.question = getDebuffFlowPositionSlideQuestion(state.scenario, role, state.debuffFlowSlideIndex);
       } else {
         state.scenario = generatePositionScenario(kind, state.debuffFlowSlideIndex);
       }
@@ -3787,6 +4010,22 @@ ${beamText}
     document.querySelectorAll('.through-boss-marker').forEach(el => el.remove());
   }
 
+  function shouldHideReadChaosTruth(sc){
+    if(!isPracticeMode() || !sc) return false;
+    const phase = state.practice.phase;
+    const answerShown = state.revealed || phase === 'result' || phase === 'transition';
+    if(answerShown) return false;
+    if(sc.positionKind === 'through'){
+      const idx = sc.throughSlide || 0;
+      return idx === 0 || idx === 1;
+    }
+    if(sc.positionKind === 'debuffFlow'){
+      const idx = sc.debuffFlowSlide || 0;
+      return idx < DEBUFF_FLOW_READ_TOTAL;
+    }
+    return false;
+  }
+
   function appendThroughReadBossMarkers(mapArena, sc){
     clearThroughReadBossMarkers();
     if(sc.round === 3 && sc.flood){
@@ -3813,7 +4052,10 @@ ${beamText}
     ].forEach(info => {
       const el = document.createElement('div');
       el.className = `through-boss-marker ${info.cls}`;
-      el.innerHTML = `<span class="truthmark ${info.truth ? 'true-mark' : 'false-mark'}">${info.truth ? '' : '?'}</span>${info.label}`;
+      const truthHtml = info.cls === 'chaos' && shouldHideReadChaosTruth(sc)
+        ? ''
+        : `<span class="truthmark ${info.truth ? 'true-mark' : 'false-mark'}">${info.truth ? '' : '?'}</span>`;
+      el.innerHTML = `${truthHtml}${info.label}`;
       mapArena.appendChild(el);
     });
   }
@@ -3846,10 +4088,12 @@ ${beamText}
       overlay.className = 'practice-log-overlay';
       overlay.innerHTML = practiceLogSummaryHtml();
       overlay.addEventListener('click', (e) => {
-        const btn = e.target.closest('#practiceSummaryNextBtn');
-        if(!btn) return;
+        const nextBtn = e.target.closest('#practiceSummaryNextBtn');
+        const retryBtn = e.target.closest('#practiceSummaryRetryBtn');
+        if(!nextBtn && !retryBtn) return;
         e.stopPropagation();
-        newPracticeSet(true);
+        if(nextBtn) newPracticeSet(true);
+        if(retryBtn) retryPracticeSet(true);
       });
       mapArena.appendChild(overlay);
       return;
@@ -3886,9 +4130,12 @@ ${beamText}
     prev.textContent = '＜';
     prev.disabled = meta.total <= 1 || meta.index <= 0;
     prev.addEventListener('click', (e) => {
+      e.preventDefault();
       e.stopPropagation();
-      if(state.mode === 'practice') movePracticeSlide(-1);
-      else movePositionSlide(-1);
+      withPreservedScroll(() => {
+        if(state.mode === 'practice') movePracticeSlide(-1);
+        else movePositionSlide(-1);
+      });
     });
     const count = document.createElement('div');
     count.className = 'map-hud-count';
@@ -3899,9 +4146,12 @@ ${beamText}
     next.textContent = '＞';
     next.disabled = meta.total <= 1 || meta.index >= meta.total - 1;
     next.addEventListener('click', (e) => {
+      e.preventDefault();
       e.stopPropagation();
-      if(state.mode === 'practice') movePracticeSlide(1);
-      else movePositionSlide(1);
+      withPreservedScroll(() => {
+        if(state.mode === 'practice') movePracticeSlide(1);
+        else movePositionSlide(1);
+      });
     });
     hud.appendChild(prev); hud.appendChild(count); hud.appendChild(next);
     mapArena.appendChild(hud);
@@ -3958,6 +4208,76 @@ ${beamText}
     svg.setAttribute('aria-label', '氷床正解安置');
     svg.innerHTML = `<defs>${pattern}<clipPath id="p4DebuffIceAnswerArenaClip"><circle cx="50" cy="50" r="50"></circle></clipPath></defs><g clip-path="url(#p4DebuffIceAnswerArenaClip)">${safeRects}</g>`;
     mapArena.appendChild(svg);
+  }
+
+  function currentDebuffSet1Selection(){
+    const s = state.selected;
+    if(s && typeof s === 'object' && !Array.isArray(s)){
+      if(s.key || s.accel) return {...s};
+    }
+    if(typeof s === 'string') return {key:s};
+    return {};
+  }
+
+  function p4DebuffSet1SelectionIsCorrect(sel, q){
+    if(!sel?.key || !q?.debuffSet1Board) return false;
+    const positionOk = sel.key === q.debuffSet1Board.correctKey;
+    const accelOk = !q.accelCheck?.required || sel.accel === q.accelCheck.correct;
+    return positionOk && accelOk;
+  }
+
+  function debuffSet1CorrectLabel(q){
+    const pos = (q?.debuffSet1Board?.positions || []).find(p => p.key === q.debuffSet1Board.correctKey);
+    return pos?.label || q?.debuffSet1Board?.correctKey || '正解位置';
+  }
+
+  function tryFinalizeDebuffSet1Answer(){
+    const q = state.scenario.question;
+    if(!q.debuffSet1Board) return;
+    const sel = currentDebuffSet1Selection();
+    state.selected = sel;
+    if(!sel.key || (q.accelCheck?.required && !sel.accel)){
+      state.answered = false;
+      saveRecord();
+      render();
+      return;
+    }
+    state.answered = true;
+    state.revealed = false;
+    const ok = p4DebuffSet1SelectionIsCorrect(sel, q);
+    const rec = currentRecord();
+    if(!isPracticeMode() && rec && !rec.scored && !q.noScore){
+      state.stats[activeStatKey()].total++;
+      if(ok) state.stats[activeStatKey()].ok++;
+      rec.scored = true;
+    }
+    finalizeAnswerResult(ok);
+  }
+
+  function answerDebuffSet1Key(key){
+    if(answerLocked()) return;
+    const q = state.scenario.question;
+    if(!q.debuffSet1Board || state.revealed) return;
+    clearAutoTimer();
+    const sel = currentDebuffSet1Selection();
+    sel.key = key;
+    state.selected = sel;
+    state.answered = false;
+    state.revealed = false;
+    tryFinalizeDebuffSet1Answer();
+  }
+
+  function answerDebuffSet1Accel(key){
+    if(answerLocked()) return;
+    const q = state.scenario.question;
+    if(!q.debuffSet1Board || !q.accelCheck?.required) return;
+    clearAutoTimer();
+    const sel = currentDebuffSet1Selection();
+    sel.accel = key;
+    state.selected = sel;
+    state.answered = false;
+    state.revealed = false;
+    tryFinalizeDebuffSet1Answer();
   }
 
   function p4DebuffSet2AreaAtPoint(pt, config){
@@ -4209,13 +4529,13 @@ ${beamText}
         panel.style.top = `${clampPercent(pt.y + (pt.y < 82 ? 10 : -10), 10, 90)}%`;
         const accelRow = q.accelCheck?.required
           ? `<div class="aoe-facing-row">${[
-              {key:'stop', label:'動かない'},
-              {key:'move', label:'動く'}
+              {key:'move', label:'動く'},
+              {key:'stop', label:'止まる'}
             ].map(o => `<button type="button" data-accel="${o.key}" class="${sel.accel === o.key ? 'active' : ''}">${o.label}</button>`).join('')}</div>`
           : '';
         panel.innerHTML = `<div class="aoe-facing-row">${[
-          {key:'out', label:'外向き'},
-          {key:'in', label:'内向き'}
+          {key:'in', label:'見る（内）'},
+          {key:'out', label:'見ない（外）'}
         ].map(o => `<button type="button" data-dir="${o.key}" class="${sel.direction === o.key ? 'active' : ''}">${o.label}</button>`).join('')}</div>${accelRow}`;
         panel.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -4240,6 +4560,59 @@ ${beamText}
       };
       answerLateGazePoint(pt);
     };
+  }
+
+  function renderDebuffSet1Board(mapArena, q, selected, answered, revealed){
+    const config = q.debuffSet1Board;
+    mapArena.className = 'arena set1';
+    const sel = currentDebuffSet1Selection();
+
+    (config.bossMarkers || []).forEach(mark => {
+      const el = document.createElement('div');
+      el.className = 'arena-boss-marker';
+      el.style.left = `${mark.x}%`;
+      el.style.top = `${mark.y}%`;
+      el.innerHTML = mark.label;
+      mapArena.appendChild(el);
+    });
+
+    (config.positions || []).forEach(pos => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `map-marker ${pos.cls || ''}`;
+      btn.style.left = `${pos.x}%`;
+      btn.style.top = `${pos.y}%`;
+      btn.innerHTML = pos.html || (pos.label || '').replace(/\n/g,'<br>');
+      btn.disabled = answerLocked();
+      if(answered || revealed){
+        if(pos.key === config.correctKey) btn.classList.add('correct');
+        if(pos.key === sel.key && pos.key !== config.correctKey) btn.classList.add('wrong');
+      } else if(pos.key === sel.key){
+        btn.classList.add('pending');
+      }
+      btn.addEventListener('click', () => answerDebuffSet1Key(pos.key));
+      mapArena.appendChild(btn);
+    });
+
+    const selectedPos = (config.positions || []).find(pos => pos.key === sel.key);
+    if(selectedPos && q.accelCheck?.required && !revealed){
+      const panel = document.createElement('div');
+      panel.className = 'aoe-facing-choice stacked';
+      panel.style.left = `${clampPercent(selectedPos.x, 18, 82)}%`;
+      panel.style.top = `${clampPercent(selectedPos.y + (selectedPos.y < 82 ? 12 : -12), 10, 90)}%`;
+      panel.innerHTML = `<div class="aoe-facing-row">${[
+        {key:'move', label:'動く'},
+        {key:'stop', label:'止まる'}
+      ].map(o => `<button type="button" data-accel="${o.key}" class="${sel.accel === o.key ? 'active' : ''}">${o.label}</button>`).join('')}</div>`;
+      panel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const accelBtn = e.target.closest('button[data-accel]');
+        if(accelBtn) answerDebuffSet1Accel(accelBtn.dataset.accel);
+      });
+      mapArena.appendChild(panel);
+    }
+
+    appendArenaCommonHud(mapArena);
   }
 
   function renderDebuffSet2Board(mapArena, q, selected, answered, revealed){
@@ -4277,8 +4650,8 @@ ${beamText}
         panel.style.left = `${clampPercent(selectedPoint.x, 18, 82)}%`;
         panel.style.top = `${clampPercent(selectedPoint.y + (selectedPoint.y < 82 ? 10 : -10), 10, 90)}%`;
         panel.innerHTML = `<div class="aoe-facing-row">${[
-          {key:'stop', label:'動かない'},
-          {key:'move', label:'動く'}
+          {key:'move', label:'動く'},
+          {key:'stop', label:'止まる'}
         ].map(o => `<button type="button" data-accel="${o.key}" class="${selected?.accel === o.key ? 'active' : ''}">${o.label}</button>`).join('')}</div>`;
         panel.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -4380,13 +4753,13 @@ ${beamText}
         panel.style.top = `${clampPercent(pt.y + (pt.y < 82 ? 10 : -10), 10, 90)}%`;
         const q = state.scenario.question;
         const dirButtons = [
-          {key:'out', label:'外向き'},
-          {key:'in', label:'内向き'}
+          {key:'in', label:'見る（内）'},
+          {key:'out', label:'見ない（外）'}
         ].map(o => `<button type="button" data-dir="${o.key}" class="${sel.direction === o.key ? 'active' : ''}">${o.label}</button>`).join('');
         const accelButtons = q.accelCheck?.required && sel.direction
           ? [
-              {key:'stop', label:'動かない'},
-              {key:'move', label:'動く'}
+              {key:'move', label:'動く'},
+              {key:'stop', label:'止まる'}
             ].map(o => `<button type="button" data-accel="${o.key}" class="${sel.accel === o.key ? 'active' : ''}">${o.label}</button>`).join('')
           : '';
         panel.innerHTML = `<div class="aoe-facing-row">${dirButtons}</div>${accelButtons ? `<div class="aoe-facing-row">${accelButtons}</div>` : ''}`;
@@ -4492,11 +4865,11 @@ ${beamText}
     if(!check?.required) return;
     const note = document.createElement('div');
     note.className = 'inline-choice-note';
-    note.textContent = `${check.label}：止まる/動くを選んでください。`;
+    note.textContent = `${check.label}：動く/止まるを選んでください。`;
     opts.appendChild(note);
     [
-      {key:'stop', label:'動かない'},
-      {key:'move', label:'動く'}
+      {key:'move', label:'動く'},
+      {key:'stop', label:'止まる'}
     ].forEach(o => {
       const btn = document.createElement('button');
       btn.className = 'option compact';
@@ -4541,6 +4914,51 @@ ${beamText}
     mapHelp.textContent = '';
     clearThroughReadBossMarkers();
 
+    if(q.debuffSet1Board){
+      mapWrap.classList.add('show');
+      if(state.mode === 'position' || state.mode === 'practice') mapActions.classList.add('show');
+      mapTitle.textContent = q.type;
+      mapHelp.textContent = q.note || '';
+      renderDebuffSet1Board(mapArena, q, state.selected, state.answered, state.revealed);
+      const set1Sel = currentDebuffSet1Selection();
+      opts.innerHTML = '';
+
+      const rb = $('#resultBox');
+      rb.className = 'result';
+      if(state.answered){
+        if(state.revealed){
+          rb.classList.add('show', 'ok');
+          $('#resultTitle').textContent = '正解を表示中';
+          $('#resultText').innerText = `正解：${debuffSet1CorrectLabel(q)}${q.accelCheck?.required ? ` ＋ 加速度${accelActionLabel(q.accelCheck.correct)}` : ' ＋ 加速度なし'}
+
+${q.explanation}`;
+        } else {
+          const ok = p4DebuffSet1SelectionIsCorrect(set1Sel, q);
+          rb.classList.add('show', ok ? 'ok' : 'ng');
+          $('#resultTitle').textContent = ok ? '正解' : '不正解';
+          $('#resultText').innerText = `正解：${debuffSet1CorrectLabel(q)}${q.accelCheck?.required ? ` ＋ 加速度${accelActionLabel(q.accelCheck.correct)}` : ' ＋ 加速度なし'}
+
+${q.explanation}`;
+        }
+      } else if(set1Sel.key || set1Sel.accel){
+        rb.classList.add('show');
+        $('#resultTitle').textContent = '判定途中';
+        const clicked = set1Sel.key ? `位置：${(q.debuffSet1Board.positions || []).find(p => p.key === set1Sel.key)?.label || set1Sel.key}` : '位置：未入力';
+        const accel = q.accelCheck?.required ? (set1Sel.accel ? `加速度：${accelActionLabel(set1Sel.accel)}` : '加速度：未入力') : '加速度：なし';
+        const nextText = q.accelCheck?.required
+          ? '位置を選んだあと、選択したボタンの下に出る動く/止まるを選ぶと判定します。'
+          : '位置を選ぶと判定します。';
+        $('#resultText').innerText = `${clicked}
+${accel}
+
+${nextText}`;
+      } else {
+        $('#resultTitle').textContent = '';
+        $('#resultText').textContent = '';
+      }
+      return;
+    }
+
     if(q.aoeGazeBoard){
       const sel = currentGazeAoeSelection();
       mapWrap.classList.add('show');
@@ -4549,7 +4967,7 @@ ${beamText}
       mapHelp.textContent = q.note || '';
       renderP4GazeAoeBoard(mapArena, q.aoeGazeBoard, state.selected, state.answered, state.revealed);
 
-      // 2枚目の加速度判定は、マップ上のマーカー横に出るミニ選択肢で行う。
+      // 早視線スライドは向きだけを判定する。早加速度は前の早デバフ処理で処理済み。
       opts.innerHTML = '';
 
       const rb = $('#resultBox');
@@ -4576,8 +4994,8 @@ ${q.explanation}`;
         const dir = sel.direction ? `マーカー向き：${gazeDirectionLabel(sel.direction)}` : 'マーカー向き：未入力';
         const accel = q.accelCheck?.required ? (sel.accel ? `加速度：${accelActionLabel(sel.accel)}` : '加速度：未入力') : '加速度：なし';
         const nextText = q.accelCheck?.required
-          ? '安置クリックと向き入力後、マップ上のミニ選択肢で止まる/動くを選ぶと判定します。'
-          : '安置クリック後、マップ上に出る向きボタンで外向き/内向きを選ぶと判定します。';
+          ? '安置クリックと向き入力後、マップ上のミニ選択肢で動く/止まるを選ぶと判定します。'
+          : '安置クリック後、マップ上に出る向きボタンで見る（内）/見ない（外）を選ぶと判定します。';
         $('#resultText').innerText = `${clicked}
 ${dir}
 ${accel}
@@ -4624,7 +5042,7 @@ ${q.explanation}`;
         const clicked = set2Sel.point ? '位置クリック：入力済み' : '位置クリック：未入力';
         const accel = q.accelCheck?.required ? (set2Sel.accel ? `加速度：${accelActionLabel(set2Sel.accel)}` : '加速度：未入力') : '加速度：なし';
         const nextText = q.accelCheck?.required
-          ? '位置をクリックしたあと、マップ上のミニ選択肢で止まる/動くを選ぶと判定します。'
+          ? '位置をクリックしたあと、マップ上のミニ選択肢で動く/止まるを選ぶと判定します。'
           : '位置をクリックすると判定します。';
         $('#resultText').innerText = `${clicked}
 ${accel}
@@ -4670,8 +5088,8 @@ ${q.explanation}`;
         const dir = lateSel.direction ? `マーカー向き：${gazeDirectionLabel(lateSel.direction)}` : 'マーカー向き：未入力';
         const accel = q.accelCheck?.required ? (lateSel.accel ? `加速度：${accelActionLabel(lateSel.accel)}` : '加速度：未入力') : '加速度：処理済み';
         const nextText = q.accelCheck?.required
-          ? '位置クリックと向き入力後、マップ上のミニ選択肢で止まる/動くを選ぶと判定します。'
-          : '位置クリック後、マップ上に出る外向き/内向きボタンを選ぶと判定します。';
+          ? '位置クリックと向き入力後、マップ上のミニ選択肢で動く/止まるを選ぶと判定します。'
+          : '位置クリック後、マップ上に出る見る（内）/見ない（外）ボタンを選ぶと判定します。';
         $('#resultText').innerText = `${clicked}
 ${dir}
 ${accel}
@@ -4691,6 +5109,9 @@ ${nextText}`;
       mapHelp.textContent = q.note || '';
       renderP4AoeBoard(mapArena, q.aoeBoard, state.selected, state.answered, state.revealed);
       if((state.mode === 'position' || state.mode === 'practice') && state.scenario?.positionKind === 'through' && throughSourceForSlide(state.scenario.throughSlide || 0).kind === 'read'){
+        appendThroughReadBossMarkers(mapArena, state.scenario);
+      }
+      if((state.mode === 'position' || state.mode === 'practice') && state.scenario?.positionKind === 'debuffFlow' && (state.scenario.debuffFlowSlide || 0) < DEBUFF_FLOW_READ_TOTAL){
         appendThroughReadBossMarkers(mapArena, state.scenario);
       }
       opts.innerHTML = '';
@@ -4883,11 +5304,11 @@ ${q.explanation}`;
       if(state.tab === 'gc1'){
         el.innerHTML = '<strong>無の氾濫メモ</strong><br>3カウント後にタイマーが開始します。青/紫ビームとTH/DPS側を制限時間内にクリックします。時間切れは不正解として正解安置を表示し、次の問題へ進みます。';
       } else if(state.tab === 'gc2'){
-        el.innerHTML = '<strong>デバフ処理メモ</strong><br>3カウント後にタイマーが開始します。8枚構成：早デバフ → 早視線 → 中央 → 早ほのお → 遅雷水 → 遅視線 → 中央 → 遅つなみ。最後まで進むと同じタブの別問題セットに切り替わります。';
+        el.innerHTML = '<strong>デバフ処理メモ</strong><br>3カウント後にタイマーが開始します。10枚構成：GC1読取 → GC2読取 → 早デバフ＋早加速度 → 早視線 → 中央 → 早ほのお → 遅雷水＋遅加速度 → 遅視線 → 中央 → 遅つなみ。最後まで進むと同じタブの別問題セットに切り替わります。';
       } else if(state.tab === 'gc3'){
         el.innerHTML = '<strong>マジックチャージメモ</strong><br>3カウント後にタイマーが開始します。3枚構成：雷床チャージ → 氷床チャージ → マジックアウト。床真偽込みの安置を制限時間内にクリックします。';
       } else {
-        el.innerHTML = '<strong>P4通しメモ</strong><br>3カウント後にタイマーが開始します。13枚構成：GC1読取 → GC2読取 → GC3読取 → 無の氾濫 → 早デバフ → 早視線 → 中央 → 早ほのお → 遅雷水 → 遅視線 → 中央 → 遅つなみ → マジックアウト。時間切れは不正解として正解安置を表示し、次のスライドへ進みます。';
+        el.innerHTML = '<strong>P4通しメモ</strong><br>3カウント後にタイマーが開始します。13枚構成：GC1読取 → GC2読取 → GC3読取 → 無の氾濫 → 早デバフ＋早加速度 → 早視線 → 中央 → 早ほのお → 遅雷水＋遅加速度 → 遅視線 → 中央 → 遅つなみ → マジックアウト。時間切れは不正解として正解安置を表示し、次のスライドへ進みます。';
       }
       return;
     }
@@ -4895,7 +5316,7 @@ ${q.explanation}`;
       if(state.tab === 'gc1'){
         el.innerHTML = '<strong>無の氾濫メモ</strong><br>中央即死ビームを避けつつ、正しい色のビームへ。THはエクスデス側、DPSは反対側。';
       } else if(state.tab === 'gc2'){
-        el.innerHTML = '<strong>デバフ処理メモ</strong><br>8枚構成：早デバフ処理 → 早視線（雷予兆安置＋向き付きマーカー） → 中央集合 → 早ほのお/つなみ → 遅雷水 → 遅視線 → 中央集合 → 遅ほのお/つなみ。マジックチャージの暗記と最後のマジックアウトは通し練習側で扱う。';
+        el.innerHTML = '<strong>デバフ処理メモ</strong><br>10枚構成：GC1読取 → GC2読取 → 早デバフ処理（早加速度込み） → 早視線（雷予兆安置＋向き付きマーカー） → 中央集合 → 早ほのお/つなみ → 遅雷水（遅加速度込み） → 遅視線 → 中央集合 → 遅ほのお/つなみ。マジックチャージの暗記と最後のマジックアウトは通し練習側で扱う。';
       } else if(state.tab === 'gc3'){
         el.innerHTML = '<strong>マジックチャージ位置確認メモ</strong><br>1枚目は雷床チャージ、2枚目は氷床チャージ。デバフ処理・向き・加速度は省略し、床真偽込みの安置クリックだけを練習します。3枚目は雷床＋氷床のマジックアウト最終安置をクリックします。';
       } else {
@@ -4919,7 +5340,7 @@ ${q.explanation}`;
         <table><thead><tr><th>デバフ</th><th>真</th><th>偽</th></tr></thead><tbody>
           <tr><td><span class="badge water">水圧縮</span></td><td>頭割り</td><td>散開</td></tr>
           <tr><td><span class="badge lightning">フォークライトニング</span></td><td>散開</td><td>頭割り</td></tr>
-          <tr><td><span class="badge accel">加速度爆弾</span></td><td>動かない</td><td>動く</td></tr>
+          <tr><td><span class="badge accel">加速度爆弾</span></td><td>止まる</td><td>動く</td></tr>
           <tr><td><span class="badge gaze">呪詛の叫声</span></td><td>見ない（外）</td><td>見る（内）</td></tr>
           <tr><td><span class="badge fire">混沌の炎（ほのお）</span></td><td>タケノコ円</td><td>タケノコドーナツ範囲</td></tr>
           <tr><td><span class="badge waterChaos">混沌の水（つなみ）</span></td><td>タケノコドーナツ範囲</td><td>タケノコ円</td></tr>
@@ -4927,11 +5348,11 @@ ${q.explanation}`;
     } else if(state.tab === 'gc2'){
       el.innerHTML = `
         <strong>2回目GCメモ</strong><br>
-        水圧縮・フォークライトニングの早遅は1回目と逆。遅叫声がつく。叫声はデバフが付いたプレイヤーから発生する視線。加速度爆弾は1回目と同じく早/遅があり、真偽で動く/動かないが変わる。2回目タブでは、1回目で付いたデバフの残り時間も併記。2回目の早水雷/早加速度爆弾=35、遅水雷=59、遅加速度爆弾/遅叫声=1m、2回目の混沌の炎/混沌の水は早なら45、遅なら1m。混沌の炎/混沌の水も、どちらのセットで処理するかと、真偽込みでタケノコ円/タケノコドーナツ範囲のどちらが来るかを確認する。
+        水圧縮・フォークライトニングの早遅は1回目と逆。遅叫声がつく。叫声はデバフが付いたプレイヤーから発生する視線。加速度爆弾は1回目と同じく早/遅があり、真偽で動く/止まるが変わる。2回目タブでは、1回目で付いたデバフの残り時間も併記。2回目の早水雷/早加速度爆弾=35、遅水雷=59、遅加速度爆弾/遅叫声=1m、2回目の混沌の炎/混沌の水は早なら45、遅なら1m。混沌の炎/混沌の水も、どちらのセットで処理するかと、真偽込みでタケノコ円/タケノコドーナツ範囲のどちらが来るかを確認する。
         <table><thead><tr><th>デバフ</th><th>真</th><th>偽</th></tr></thead><tbody>
           <tr><td><span class="badge water">水圧縮</span></td><td>頭割り</td><td>散開</td></tr>
           <tr><td><span class="badge lightning">フォークライトニング</span></td><td>散開</td><td>頭割り</td></tr>
-          <tr><td><span class="badge accel">加速度爆弾</span></td><td>動かない</td><td>動く</td></tr>
+          <tr><td><span class="badge accel">加速度爆弾</span></td><td>止まる</td><td>動く</td></tr>
           <tr><td><span class="badge gaze">呪詛の叫声</span></td><td>見ない（外）</td><td>見る（内）</td></tr>
           <tr><td><span class="badge fire">混沌の炎（ほのお）</span></td><td>タケノコ円</td><td>タケノコドーナツ範囲</td></tr>
           <tr><td><span class="badge waterChaos">混沌の水（つなみ）</span></td><td>タケノコドーナツ範囲</td><td>タケノコ円</td></tr>
@@ -4990,8 +5411,9 @@ ${q.explanation}`;
   $('#showAnswerBtn').addEventListener('click', showAnswer);
   $('#mapNextBtn').addEventListener('click', newQuestion);
   $('#mapPrevBtn').addEventListener('click', prevQuestion);
-  $('#mapSlidePrevBtn').addEventListener('click', () => isPracticeMode() ? movePracticeSlide(-1) : movePositionSlideButton(-1));
-  $('#mapSlideNextBtn').addEventListener('click', () => isPracticeMode() ? movePracticeSlide(1) : movePositionSlideButton(1));
+  $('#mapRetryBtn').addEventListener('click', retryCurrentQuestion);
+  $('#mapSlidePrevBtn').addEventListener('click', () => withPreservedScroll(() => isPracticeMode() ? movePracticeSlide(-1) : movePositionSlideButton(-1)));
+  $('#mapSlideNextBtn').addEventListener('click', () => withPreservedScroll(() => isPracticeMode() ? movePracticeSlide(1) : movePositionSlideButton(1)));
   $('#mapShowAnswerBtn').addEventListener('click', showAnswer);
   $('#practiceRestartBtn').addEventListener('click', startPracticeCurrent);
   $('#mapPracticeStartBtn')?.addEventListener('click', startPracticeCurrent);
